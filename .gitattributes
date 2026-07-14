@@ -1,0 +1,3 @@
+# Declare binary files to prevent Git from corrupting them with CRLF conversion
+*.pdf binary
+*.png binary
