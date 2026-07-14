@@ -1,0 +1,202 @@
+[
+  {
+    "strategy": "DS-native",
+    "trial": 1,
+    "valid": true,
+    "cost": 6.9e-05,
+    "tokens": 134
+  },
+  {
+    "strategy": "MM-retry-3",
+    "trial": 1,
+    "valid": true,
+    "cost": 0.000385,
+    "attempts": 1
+  },
+  {
+    "strategy": "MM-DS-delegate",
+    "trial": 1,
+    "valid": true,
+    "cost": 0.000505
+  },
+  {
+    "strategy": "DS-native",
+    "trial": 2,
+    "valid": true,
+    "cost": 6.9e-05,
+    "tokens": 134
+  },
+  {
+    "strategy": "MM-retry-3",
+    "trial": 2,
+    "valid": false,
+    "cost": 0.001255,
+    "attempts": 3
+  },
+  {
+    "strategy": "MM-DS-delegate",
+    "trial": 2,
+    "valid": true,
+    "cost": 0.000601
+  },
+  {
+    "strategy": "DS-native",
+    "trial": 3,
+    "valid": true,
+    "cost": 6.9e-05,
+    "tokens": 134
+  },
+  {
+    "strategy": "MM-retry-3",
+    "trial": 3,
+    "valid": true,
+    "cost": 0.000354,
+    "attempts": 1
+  },
+  {
+    "strategy": "MM-DS-delegate",
+    "trial": 3,
+    "valid": true,
+    "cost": 0.000421
+  },
+  {
+    "strategy": "DS-native",
+    "trial": 4,
+    "valid": true,
+    "cost": 8.9e-05,
+    "tokens": 152
+  },
+  {
+    "strategy": "MM-retry-3",
+    "trial": 4,
+    "valid": true,
+    "cost": 0.000191,
+    "attempts": 1
+  },
+  {
+    "strategy": "MM-DS-delegate",
+    "trial": 4,
+    "valid": true,
+    "cost": 0.000469
+  },
+  {
+    "strategy": "DS-native",
+    "trial": 5,
+    "valid": true,
+    "cost": 6.9e-05,
+    "tokens": 134
+  },
+  {
+    "strategy": "MM-retry-3",
+    "trial": 5,
+    "valid": true,
+    "cost": 0.000418,
+    "attempts": 1
+  },
+  {
+    "strategy": "MM-DS-delegate",
+    "trial": 5,
+    "valid": true,
+    "cost": 0.000516
+  },
+  {
+    "strategy": "DS-native",
+    "trial": 6,
+    "valid": true,
+    "cost": 6.9e-05,
+    "tokens": 134
+  },
+  {
+    "strategy": "MM-retry-3",
+    "trial": 6,
+    "valid": true,
+    "cost": 0.000266,
+    "attempts": 1
+  },
+  {
+    "strategy": "MM-DS-delegate",
+    "trial": 6,
+    "valid": true,
+    "cost": 0.00065
+  },
+  {
+    "strategy": "DS-native",
+    "trial": 7,
+    "valid": true,
+    "cost": 6.9e-05,
+    "tokens": 134
+  },
+  {
+    "strategy": "MM-retry-3",
+    "trial": 7,
+    "valid": true,
+    "cost": 0.000192,
+    "attempts": 1
+  },
+  {
+    "strategy": "MM-DS-delegate",
+    "trial": 7,
+    "valid": true,
+    "cost": 0.000721
+  },
+  {
+    "strategy": "DS-native",
+    "trial": 8,
+    "valid": true,
+    "cost": 6.9e-05,
+    "tokens": 134
+  },
+  {
+    "strategy": "MM-retry-3",
+    "trial": 8,
+    "valid": true,
+    "cost": 0.000353,
+    "attempts": 1
+  },
+  {
+    "strategy": "MM-DS-delegate",
+    "trial": 8,
+    "valid": true,
+    "cost": 0.00046
+  },
+  {
+    "strategy": "DS-native",
+    "trial": 9,
+    "valid": true,
+    "cost": 6.9e-05,
+    "tokens": 134
+  },
+  {
+    "strategy": "MM-retry-3",
+    "trial": 9,
+    "valid": true,
+    "cost": 0.000684,
+    "attempts": 2
+  },
+  {
+    "strategy": "MM-DS-delegate",
+    "trial": 9,
+    "valid": true,
+    "cost": 0.000428
+  },
+  {
+    "strategy": "DS-native",
+    "trial": 10,
+    "valid": true,
+    "cost": 6.9e-05,
+    "tokens": 134
+  },
+  {
+    "strategy": "MM-retry-3",
+    "trial": 10,
+    "valid": true,
+    "cost": 0.000837,
+    "attempts": 2
+  },
+  {
+    "strategy": "MM-DS-delegate",
+    "trial": 10,
+    "valid": true,
+    "cost": 0.00047
+  }
+]

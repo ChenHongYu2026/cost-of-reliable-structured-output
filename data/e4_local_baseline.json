@@ -1,0 +1,122 @@
+[
+  {
+    "model": "hy-mt2-7b",
+    "role": "EC",
+    "ssc": 8.5,
+    "trial": 1,
+    "valid": true,
+    "output_tokens": 35,
+    "elapsed_s": 2.4549713134765625,
+    "cost": 0.0
+  },
+  {
+    "model": "hy-mt2-7b",
+    "role": "EC",
+    "ssc": 8.5,
+    "trial": 2,
+    "valid": true,
+    "output_tokens": 35,
+    "elapsed_s": 2.4287490844726562,
+    "cost": 0.0
+  },
+  {
+    "model": "hy-mt2-7b",
+    "role": "EC",
+    "ssc": 8.5,
+    "trial": 3,
+    "valid": true,
+    "output_tokens": 35,
+    "elapsed_s": 2.4164884090423584,
+    "cost": 0.0
+  },
+  {
+    "model": "hy-mt2-7b",
+    "role": "LD",
+    "ssc": 1.4,
+    "trial": 1,
+    "valid": true,
+    "output_tokens": 25,
+    "elapsed_s": 2.381741523742676,
+    "cost": 0.0
+  },
+  {
+    "model": "hy-mt2-7b",
+    "role": "LD",
+    "ssc": 1.4,
+    "trial": 2,
+    "valid": true,
+    "output_tokens": 25,
+    "elapsed_s": 2.348288059234619,
+    "cost": 0.0
+  },
+  {
+    "model": "hy-mt2-7b",
+    "role": "LD",
+    "ssc": 1.4,
+    "trial": 3,
+    "valid": true,
+    "output_tokens": 25,
+    "elapsed_s": 2.309708833694458,
+    "cost": 0.0
+  },
+  {
+    "model": "hy-mt2-7b",
+    "role": "PI",
+    "ssc": 2.4,
+    "trial": 1,
+    "valid": true,
+    "output_tokens": 34,
+    "elapsed_s": 2.473267078399658,
+    "cost": 0.0
+  },
+  {
+    "model": "hy-mt2-7b",
+    "role": "PI",
+    "ssc": 2.4,
+    "trial": 2,
+    "valid": true,
+    "output_tokens": 34,
+    "elapsed_s": 2.404881477355957,
+    "cost": 0.0
+  },
+  {
+    "model": "hy-mt2-7b",
+    "role": "PI",
+    "ssc": 2.4,
+    "trial": 3,
+    "valid": true,
+    "output_tokens": 34,
+    "elapsed_s": 2.4143428802490234,
+    "cost": 0.0
+  },
+  {
+    "model": "hy-mt2-7b",
+    "role": "RC",
+    "ssc": 4.0,
+    "trial": 1,
+    "valid": true,
+    "output_tokens": 44,
+    "elapsed_s": 2.5812408924102783,
+    "cost": 0.0
+  },
+  {
+    "model": "hy-mt2-7b",
+    "role": "RC",
+    "ssc": 4.0,
+    "trial": 2,
+    "valid": true,
+    "output_tokens": 44,
+    "elapsed_s": 2.504948854446411,
+    "cost": 0.0
+  },
+  {
+    "model": "hy-mt2-7b",
+    "role": "RC",
+    "ssc": 4.0,
+    "trial": 3,
+    "valid": true,
+    "output_tokens": 44,
+    "elapsed_s": 2.527894973754883,
+    "cost": 0.0
+  }
+]

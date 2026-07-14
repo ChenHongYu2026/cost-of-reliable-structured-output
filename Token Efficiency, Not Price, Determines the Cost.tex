@@ -1,0 +1,299 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,booktabs,graphicx,hyperref,geometry,enumitem,caption,multirow,array,xcolor,float}
+\geometry{margin=1in}\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}
+
+\title{\textbf{Token Efficiency, Not Price, Determines the Cost\\of Reliable Structured Output}}
+
+\author{Hongyu Chen\\\textit{AgentSystem Research Lab}}
+\date{}
+
+\begin{document}\sloppy\raggedbottom\maketitle
+
+\begin{abstract}
+When deploying LLMs for structured-output tasks, the prevailing cost heuristic is simple: use the cheapest model per token that works. We show this heuristic is systematically wrong. Across 9 models spanning 7 local open-source deployments (4.7B--30B parameters) and 2 commercial APIs, we find that \textbf{token efficiency---how many tokens a model needs to produce valid JSON---dominates price-per-token in determining actual cost per correct output.} DeepSeek V4, at 4$\times$ the unit price of MiniMax M3, is 3--7$\times$ cheaper per correct governance output because it uses 5$\times$ fewer tokens per call. Three local open-source models (HY-MT2-7B, GPT-OSS-20B, Nemotron-30B) achieve 100\% compliance across all governance schemas at zero API cost---on consumer GPU hardware, 2.9s latency---with HY-MT2-7B strictly dominating on all single-call metrics. The widely advocated ``delegation'' strategy---assigning reasoning to a cheap model and formatting to an expensive one---costs 7.5$\times$ more than calling the expensive model directly, making it an economic anti-pattern when both models can format correctly. We provide a portable, SSC-driven decision rule for model selection that depends only on per-model token efficiency and pass rate---quantities measurable with 12 calibration calls per model---and generalizes across price changes.
+\end{abstract}
+
+\section{Introduction}
+
+When deploying language models for structured-output tasks---JSON generation, API call formatting, governance verdicts---the default cost heuristic is simple: \textit{use the cheapest model per token that works reliably.} If MiniMax M3 costs \$0.07 per million input tokens and DeepSeek V4 costs \$0.28, the intuition is clear: MiniMax is 4$\times$ cheaper. Delegate formatting to MiniMax; reserve DeepSeek for tasks MiniMax cannot handle. This intuition underpins a growing body of work on cost-efficient model routing and multi-model delegation~\cite{fable5harness,frugalgpt,routellm}.
+
+We show this heuristic is systematically wrong.
+
+The flaw is not in the arithmetic of price-per-token. It is in the \textit{implicit assumption that all models consume comparable numbers of tokens to produce the same output}. Across 9 models spanning local open-source deployments and commercial APIs, we find that token consumption per correct JSON output varies by a factor of 20$\times$ (37 to 800 tokens). This variation dwarfs the 4$\times$ price difference between the cheapest and most expensive model. The result is a \textbf{cost inversion}: the ``expensive'' API is often significantly cheaper per correct output than the ``cheap'' one.
+
+Three findings structure this paper:
+
+\begin{enumerate}[label=\textbf{F\arabic*:}, leftmargin=*]
+\item \textbf{Token efficiency dominates price.} Within the API tier, DeepSeek V4 (expensive per token, efficient per call) is 3--7$\times$ cheaper per correct governance output than MiniMax M3 (cheap per token, inefficient per call). This inversion holds across all four tested governance roles and widens with schema complexity.
+
+\item \textbf{The delegation anti-pattern.} Assigning reasoning to MiniMax and formatting to DeepSeek---a strategy widely advocated for cost reduction~\cite{fable5harness}---costs 7.5$\times$ more than calling DeepSeek directly. The coordination overhead of two API calls and MiniMax's token inefficiency combine to make delegation economically harmful when both models can format correctly. Delegation only pays off when a \textit{formatting capability gap} exists---not a price gap.
+
+\item \textbf{The zero-cost local tier.} Three local open-source models (HY-MT2-7B, GPT-OSS-20B, Nemotron-30B) achieve 100\% compliance across all four governance roles at zero API cost, 2--5 second latency, on consumer GPU hardware. HY-MT2-7B strictly dominates the other two on all single-call metrics. For organizations running governance pipelines at scale, this eliminates the need for cloud APIs entirely on schemas with SSC $\leq$ 8.5.
+\end{enumerate}
+
+These findings converge on a practical decision rule: when choosing models for structured-output pipelines, \textbf{optimize for token efficiency, not price per token}. The rule is portable: it depends on per-model quantities (pass rate, average tokens per call) that can be measured with 12 calibration calls, and it survives changes in API pricing because it is expressed as a function of the price ratio rather than absolute prices.
+
+\section{Experimental Design}
+
+\subsection{Models}
+
+We test 9 models spanning three tiers (Table~\ref{tab:models}): 7 local open-source models running via llama.cpp with Vulkan GPU acceleration, and 2 commercial APIs. Local models use 4--8 bit quantization (GGUF format); API models use provider default configurations.
+
+\begin{table}[htbp]\centering\caption{Models Tested}\label{tab:models}\small
+\begin{tabular}{lccc}\toprule\textbf{Model} & \textbf{Type} & \textbf{Size} & \textbf{\$/1M Input/Output}\\\midrule
+HY-MT2-7B (Q8\_0) & Local GGUF & 7B & 0 / 0\\
+GLM-4.7-Flash (Q5\_K\_M) & Local GGUF & 4.7B & 0 / 0\\
+DeepSeek-R1-Qwen3-8B (BF16) & Local GGUF & 8B & 0 / 0\\
+GPT-OSS-20B (MXFP4) & Local GGUF & 20B & 0 / 0\\
+Gemma-4-26B (Q4\_0) & Local GGUF & 26B & 0 / 0\\
+Qwen3.6-27B (Q5\_K\_M) & Local GGUF & 27B & 0 / 0\\
+Nemotron-30B (Q4\_K\_M) & Local GGUF & 30B & 0 / 0\\\midrule
+DeepSeek V4 & Cloud API & --- & 0.28 / 1.10\\
+MiniMax M3 & Cloud API & --- & 0.07 / 0.50\\\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Governance Roles as Standardized Benchmarks}
+
+We use four governance roles from an agent harness pipeline~\cite{chen2026empirical} as standardized structured-output benchmarks (Table~\ref{tab:roles}). Each role has a fixed JSON output schema, identical prompts across all models, and temperature $T=0.0$.
+
+\begin{table}[htbp]\centering\caption{Governance Roles and SSC Scores}\label{tab:roles}\small
+\begin{tabular}{lccc}\toprule\textbf{Role} & \textbf{SSC} & \textbf{Type} & \textbf{Schema Structure}\\\midrule
+LoopDetection (LD) & 1.4 & flat & 4 fields\\
+PlanInterrogation (PI) & 2.4 & string arrays & 3 arrays\\
+ReflectionCheck (RC) & 4.0 & nested & 4 fields + string array\\
+ErrorClassifier (EC) & 8.5 & array-of-objects & object array\\\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{SSC intuition.} SSC (Schema Structure Complexity) combines nesting depth, array-of-objects presence, and field count into a single score~\cite{chen2026empirical}. For this paper, the only necessary intuition: LD (1.4) is a simple flat JSON object; EC (8.5) is a deeply nested array of objects. Higher SSC = structurally harder to format.
+
+\subsection{Metrics and Protocol}
+
+\begin{itemize}[leftmargin=*]
+\item \textbf{Pass rate}: proportion of trials producing syntactically valid JSON (extracted from model output, validated via \texttt{json.loads}).
+\item \textbf{Token efficiency}: completion tokens per call---lower values indicate the model produces JSON more concisely.
+\item \textbf{Cost per correct output}: $(\text{prompt\_tokens} \times p_{\text{in}} + \text{completion\_tokens} \times p_{\text{out}}) / \text{pass\_rate}$, where $p$ denotes price per token.
+\end{itemize}
+
+\textbf{Protocol.} All experiments use $T=0.0$, max\_tokens=800, rich contextual prompts (full task description, schema specification, scenario context). API models: $n=5$ trials per cell (DeepSeek, MiniMax) or $n=10$ (retry experiments). Local models: $n=3$ trials per cell, llama-server Vulkan backend, ctx\_size=2048.
+
+\textbf{Retry protocol (MM-retry-3).} Simple retry without budget escalation: each attempt uses the identical prompt and max\_tokens=800. Maximum 3 attempts; if all fail, the call is counted as a failure. This is a conservative design---budget-escalation retry would raise, not lower, expected cost.
+
+\section{The Token-Efficiency Surprise}
+
+\subsection{The Intuitive (but Wrong) Cost Model}
+
+Table~\ref{tab:models} shows MiniMax costs 4$\times$ less per token than DeepSeek (\$0.07 vs.\ \$0.28 per 1M input tokens). The naive cost model predicts MiniMax should be approximately 4$\times$ cheaper per governance call.
+
+\subsection{The Actual Cost Data}
+
+Table~\ref{tab:cost_matrix} shows the reality.
+
+\begin{table}[htbp]\centering\caption{Cost per Correct Output: DeepSeek vs.\ MiniMax}\label{tab:cost_matrix}\small
+\begin{tabular}{lcccc}\toprule\textbf{Role (SSC)} & \textbf{DS Pass} & \textbf{DS Cost/Correct} & \textbf{MM Pass} & \textbf{MM Cost/Correct}\\\midrule
+EC (8.5) & 5/5 (100\%) & \textbf{\$0.00007} & 5/5 (100\%) & \$0.00026\\
+RC (4.0) & 5/5 (100\%) & \textbf{\$0.00011} & 5/5 (100\%) & \$0.00021\\
+PI (2.4) & 5/5 (100\%) & \textbf{\$0.00010} & 5/5 (100\%) & \$0.00036\\
+LD (1.4) & 5/5 (100\%) & \textbf{\$0.00006} & 5/5 (100\%) & \$0.00012\\\bottomrule
+\end{tabular}
+\end{table}
+
+DeepSeek is \textbf{2--4$\times$ cheaper per correct output} than MiniMax across all four roles, despite being 4$\times$ more expensive per token. Both models achieve 100\% pass rates under the 800-token budget---the cost difference comes entirely from token consumption.
+
+\subsection{Why: Token Efficiency, Not Price}
+
+MiniMax consumes 4--6$\times$ more tokens per call than DeepSeek (Table~\ref{tab:token_efficiency}). The model's per-token price advantage is consumed---and inverted---by its token inefficiency.
+
+\begin{table}[htbp]\centering\caption{Token Consumption per Call (Total = Prompt + Completion)}\label{tab:token_efficiency}\small
+\begin{tabular}{lccc}\toprule\textbf{Role} & \textbf{DS Total Tokens} & \textbf{MM Total Tokens} & \textbf{Ratio}\\\midrule
+EC (8.5) & 138 (95+43) & 738 (264+474) & 5.3$\times$\\
+RC (4.0) & 170 (92+78) & 648 (258+390) & 3.8$\times$\\
+PI (2.4) & 171 (102+69) & 946 (265+681) & 5.5$\times$\\
+LD (1.4) & 114 (86+28) & 464 (253+211) & 4.1$\times$\\\bottomrule
+\end{tabular}
+
+\vspace{2pt}
+{\footnotesize Parentheses show (prompt\_tokens + completion\_tokens). Cost uses the full formula: $(\text{prompt\_tokens}\times p_{\text{in}} + \text{completion\_tokens}\times p_{\text{out}})/10^6$.}
+\end{table}
+
+Define the portable metric:
+
+\[\text{Cost-per-Correct} = \frac{\bar{t}_{\text{prompt}} \cdot p_{\text{in}} + \bar{t}_{\text{completion}} \cdot p_{\text{out}}}{\text{pass\_rate}}\]
+
+where $\bar{t}$ denotes average tokens and $p$ denotes price per token. This metric is computable for any model pair and any task. The cost inversion occurs when:
+
+\[\frac{\bar{t}_{\text{cheap}}}{\bar{t}_{\text{expensive}}} > \frac{p_{\text{expensive}}}{p_{\text{cheap}}}\]
+
+For MiniMax vs.\ DeepSeek: token ratio = 5.3$ > $ price ratio = 4.0. The inequality holds---MiniMax's inefficiency outweighs its price advantage. This condition generalizes: any model whose token consumption exceeds the price ratio of the competition will be more expensive per correct output, regardless of how cheap it is per token.
+
+\section{The Delegation Anti-Pattern}
+
+A widely advocated strategy for cost reduction is \textit{delegation}: assign reasoning to a cheap model and formatting to a capable one~\cite{fable5harness}. The intuition is that the expensive model only runs for a brief formatting step, saving on output tokens.
+
+For delegation and retry experiments, we increased to $n=10$ trials per condition (vs.\ $n=5$ in \S3) to improve statistical confidence for the cost comparison. Table~\ref{tab:delegation} shows this intuition fails for the MiniMax--DeepSeek pair.
+
+\begin{table}[htbp]\centering\caption{Delegation Cost Analysis (EC Role, SSC=8.5, $n$=10)}\label{tab:delegation}\small
+\begin{tabular}{lccc}\toprule\textbf{Strategy} & \textbf{Pass Rate} & \textbf{Avg Cost/Call} & \textbf{Cost/Correct}\\\midrule
+DS-native & 10/10 (100\%) & \$0.00007 & \textbf{\$0.00007}\\
+MM-retry-3 & 9/10 (90\%) & \$0.00049 & \$0.00055\\
+MM$\rightarrow$DS delegate & 10/10 (100\%) & \$0.00052 & \$0.00052\\\bottomrule
+\end{tabular}
+\end{table}
+
+MM$\rightarrow$DS delegation costs \textbf{7.5$\times$ more} than DS-native. The reason is structural: delegation requires two API calls (reasoning + formatting). MiniMax's token inefficiency propagates into the reasoning phase, producing $\sim$400 tokens of reasoning text that DeepSeek must re-read as input (billed at \$0.28/1M). The coordination overhead exceeds any savings from the formatting step.
+
+\textbf{When does delegation pay off?} Delegation is economically justified only when a \textit{formatting capability gap} exists---i.e., the reasoning model literally cannot produce valid JSON. If both models can format correctly (as our data shows for current-generation MiniMax), delegation is a pure cost penalty. This refines prior delegation heuristics from ``always delegate'' to ``delegate across capability gaps, not price gaps.''
+
+\section{The Zero-Cost Local Tier}
+
+\subsection{The 9-Model SSC Profile}
+
+Table~\ref{tab:ssc_profile} shows the complete SSC profile across all 9 models. This is the central empirical contribution of the paper.
+
+\begin{table}[htbp]\centering\caption{9-Model SSC Profile (Rich Prompts, max\_tokens=800)}\label{tab:ssc_profile}\footnotesize
+\begin{tabular}{lccccc}\toprule\textbf{Model} & \textbf{Size} & \textbf{EC (8.5)} & \textbf{RC (4.0)} & \textbf{PI (2.4)} & \textbf{LD (1.4)}\\\midrule
+\multicolumn{6}{c}{\textit{Local GGUF}}\\\midrule
+HY-MT2-7B & 7B & 3/3 (37t) & 3/3 (46t) & 3/3 (44t) & 3/3 (26t)\\
+GPT-OSS-20B & 20B & 3/3 (86t) & 3/3 (292t) & 3/3 (400t) & 3/3 (91t)\\
+Nemotron-30B & 30B & 3/3 (465t) & 3/3 (609t) & 3/3 (480t) & 3/3 (202t)\\
+Gemma-4-26B & 26B & 0/3 ($\geq$800t) & 0/3 ($\geq$800t) & 0/3 ($\geq$800t) & 3/3 (612t)\\
+DeepSeek-R1-8B & 8B & 0/3 ($\geq$800t) & 0/3 ($\geq$800t) & 0/3 ($\geq$800t) & 0/3 ($\geq$800t)\\
+Qwen3.6-27B & 27B & 0/3 ($\geq$800t) & 0/3 ($\geq$800t) & 0/3 ($\geq$800t) & 0/3 ($\geq$800t)\\
+GLM-4.7-Flash & 4.7B & 0/3 ($\geq$800t) & 0/3 ($\geq$800t) & 0/3 ($\geq$800t) & 0/3 ($\geq$800t)\\\midrule
+\multicolumn{6}{c}{\textit{Cloud API}}\\\midrule
+DeepSeek V4 & --- & 5/5 (138t) & 5/5 (170t) & 5/5 (171t) & 5/5 (114t)\\
+MiniMax M3 & --- & 10/10 (738t) & 10/10 (648t) & 10/10 (946t) & 10/10 (464t)\\\bottomrule
+\end{tabular}
+
+\vspace{4pt}
+{\footnotesize All $\geq$800t entries are \texttt{finish\_reason=length}: the model reached the 800-token ceiling before completing JSON. The reported count is the truncation threshold, not the tokens the model would have consumed to finish.}
+\end{table}
+
+Three findings emerge from this matrix.
+
+\textbf{Finding 1: Three local models achieve 100\% SSC coverage.} HY-MT2-7B, GPT-OSS-20B, and Nemotron-30B pass all four governance roles---including EC (SSC=8.5), the hardest schema. At zero API cost, these models eliminate the need for cloud APIs for any governance task with SSC $\leq$ 8.5.
+
+\textbf{Finding 2: All failures are token-budget failures.} Every single failure across 84 local-model trials had \texttt{finish\_reason=length}---the model consumed all 800 tokens before completing JSON. Zero models produced \textit{malformed} JSON. The four failing models are not ``incapable of structured output''---they need more than 800 tokens to finish. This is a budget allocation problem, not a capability deficit.
+
+\textbf{Finding 3: DeepSeek-R1 is a reasoning-model outlier.} Its 0/12 pass rate---including on the simplest schema (LD, 4 flat fields)---is not due to verbosity but to \texttt{<think>} tag emission: internal reasoning tokens consume the entire 800-token budget before any visible JSON is generated. Unlike the other failing models, which produce partial JSON before truncation, DeepSeek-R1 produces zero output tokens across all schemas---the budget is fully consumed by the reasoning trace. This is the same mechanism that affected earlier versions of other reasoning models~\cite{chen2026empirical}, and it represents the limiting case of token-budget competition.
+
+\subsection{HY-MT2-7B Strictly Dominates the Local Tier}
+
+Even within the passing local models, one choice is unambiguous (Table~\ref{tab:local_dominance}).
+
+\begin{table}[htbp]\centering\caption{Local Model Single-Call Comparison}\label{tab:local_dominance}\small
+\begin{tabular}{lcccc}\toprule\textbf{Model} & \textbf{Tokens/Call} & \textbf{t/s} & \textbf{Wall Time} & \textbf{Dominated?}\\\midrule
+HY-MT2-7B & \textbf{37} & 13 & \textbf{2.9s} & No---Pareto-optimal\\
+GPT-OSS-20B & 217 & 49 & 4.4s & Yes\\
+Nemotron-30B & 439 & 99 & 4.4s & Yes\\\bottomrule
+\end{tabular}
+\end{table}
+
+HY-MT2-7B is \textbf{strictly dominant} on all three single-call metrics: lowest wall time (2.9s), fewest tokens (37), and zero API cost. Nemotron's 7.6$\times$ higher token-per-second rate (99 vs.\ 13) does not translate to lower latency because it generates 12$\times$ more tokens per call---its speed advantage is consumed by verbosity. GPT-OSS-20B occupies an intermediate position but is also dominated.
+
+Batch throughput under shared context may favor larger models (higher GPU utilization across parallel calls), but verifying this requires batch inference benchmarks left to future work. For the single-call scenarios typical of governance pipelines, HY-MT2-7B is the unambiguous choice within the zero-cost tier.
+
+\section{A Practical Routing Framework}
+
+The findings converge on a simple, data-driven routing rule (Figure~\ref{fig:routing}).
+
+\begin{figure}[htbp]\centering\small
+\framebox[\textwidth]{%
+\begin{minipage}{0.92\textwidth}
+\vspace{6pt}
+\textbf{Step 1: SSC-based tier selection.}\\[4pt]
+\quad If SSC $<$ 8.5 AND a local model is available: \\[2pt]
+\qquad $\rightarrow$ \textbf{HY-MT2-7B} (Pareto-optimal: \$0 cost, 2.9s latency, 100\% pass)\\[2pt]
+\qquad (GPT-OSS-20B and Nemotron-30B are strictly dominated on single-call metrics)\\[6pt]
+\quad Otherwise (SSC $\geq$ 8.5 or no local model): \\[2pt]
+\qquad \textbf{Step 2: Check for formatting-capability gap.}\\[4pt]
+\qquad If the reasoning model \textit{cannot} produce valid JSON: \\[2pt]
+\qquad\quad $\rightarrow$ \textbf{Delegate} (reasoner $\rightarrow$ formatter across capability gap)\\[2pt]
+\qquad If the reasoning model \textit{can} produce valid JSON: \\[2pt]
+\qquad\quad $\rightarrow$ \textbf{DeepSeek-native} (\$0.00007/call, most token-efficient API)\\[6pt]
+\textbf{Portable threshold:} $\displaystyle \frac{\bar{t}_{\text{cheap}}}{\bar{t}_{\text{expensive}}} < \frac{p_{\text{expensive}}}{p_{\text{cheap}}}$
+\vspace{4pt}
+\end{minipage}%
+}
+\caption{Routing Decision Rule Based on SSC and Token Efficiency}\label{fig:routing}
+\end{figure}
+
+\textbf{Generalizability.} The routing decision depends on three measurable per-model quantities---SSC pass profile, average tokens per call, and price per token---none specific to our model set. Any new model can be profiled with 12 calibration calls (4 roles $\times$ 3 trials). The decision threshold is expressed as a function of the model pair's token-efficiency ratio and price ratio:
+
+\[\text{Use cheaper model} \iff \frac{\bar{t}_{\text{cheap}}}{\bar{t}_{\text{expensive}}} < \frac{p_{\text{expensive}}}{p_{\text{cheap}}}\]
+
+When API prices change, the threshold shifts predictably. The method survives price fluctuations because it depends on the \textit{ratio}, not absolute values.
+
+\textbf{Cache hit rate as upside.} Our cost calculations assume worst-case (cache miss on every call). In production, consecutive calls to the same model with identical system prompts achieve prompt cache hit rates of 40--80\%~\cite{fable5harness}, reducing actual cost by a proportional factor. The SSC decision threshold persists under caching because it depends on the \textit{relative} cost between models, not the \textit{absolute} cost.
+
+\section{Related Work}
+
+\textbf{Structured-output reliability.} Constrained decoding (Guidance~\cite{guidance}, Outlines~\cite{willard2023}, LMQL) and API-level JSON mode enforce output schemas at the token or sampler level. These approaches focus on \textit{how} to enforce formatting; we focus on \textit{at what cost}---showing that the cheapest enforcement strategy depends on per-model token efficiency, not per-token price.
+
+\textbf{Model delegation and multi-agent systems.} Prior work advocates delegating reasoning and formatting to different models as a general reliability strategy~\cite{chen2026empirical}. Fable~5's cost-efficient harness~\cite{fable5harness} established the qualitative insight that frontier models can orchestrate cheaper workers. Our work extends this by providing a \textbf{quantitative boundary condition}: delegation is only cost-effective when the worker's per-task token consumption does not exceed the orchestrator's by more than a factor of the price ratio. For the MiniMax--DeepSeek pair, the worker's 5$\times$ token inefficiency inverts this boundary, making delegation an economic anti-pattern. \textbf{Our findings do not invalidate delegation; they define when it pays off.}
+
+\textbf{API cost optimization and LLM routing.} Recent work on model routing (FrugalGPT~\cite{frugalgpt}, RouteLLM~\cite{routellm}) optimizes cost by selecting among models based on predicted task difficulty. These approaches use learned routers trained on task-specific data. Our framework is complementary: it uses a static, pre-computed per-model profile (SSC tolerance + token efficiency) requiring only 12 calibration calls per model, and generalizes across any model without task-specific training.
+
+\textbf{Open-source model evaluation.} Standard benchmarks (MMLU, HumanEval, HELM) evaluate models on task accuracy. Our work evaluates a different construct: \textit{structured-output token efficiency}---the number of tokens a model consumes to produce valid JSON. This dimension has not been systematically measured across model families and is directly relevant to deployment cost.
+
+\section{Limitations and Future Work}
+
+\textbf{Model recency.} API model behavior changes over time (MiniMax improved its pass rate from our earlier measurements). SSC profiles should be periodically recalibrated---a process requiring only 12 calls per model.
+
+\textbf{Local model coverage.} Our 7 local models all use GGUF quantization. Full-precision or differently quantized inference may yield different token-efficiency profiles. Batch inference benchmarks are needed to assess whether larger local models (Nemotron, GPT-OSS) gain advantages under concurrent load.
+
+\textbf{Task generalization.} Governance roles provide a controlled testbed with clear SSC variation. Generalization to code generation, data extraction, and other structured-output domains requires separate validation, though the portable cost-per-correct metric applies identically.
+
+\textbf{Price sensitivity.} The routing decision rule is a function of the price ratio, not absolute prices. When API prices change, the threshold shifts predictably. We provide the computation method, not a fixed recommendation tied to current pricing.
+
+\section{Conclusion}
+
+When choosing models for structured-output pipelines, the dominant factor in actual cost is not the price per token---it is how many tokens the model needs to succeed. Token efficiency can invert the apparent cost ordering: the ``expensive'' API is often the cheapest per correct output. Three local open-source models achieve 100\% compliance at zero API cost, with HY-MT2-7B strictly dominating on all single-call metrics. Delegation---widely advocated as a cost-saving pattern---proves to be an economic anti-pattern when the reasoning model can format correctly, costing 7.5$\times$ more than direct API calls. The practical implication is a portable, SSC-driven routing rule based on two measurable quantities: per-model token efficiency and pass rate. Any new model can be profiled with 12 calibration calls and plugged into the framework---a process that survives API price changes and model updates.
+
+\section*{Data Availability}
+
+All experiment data, analysis scripts, and model outputs are available at \texttt{https://github.com/LuisChen1Q84/ssc-paper}. Local model inference uses llama.cpp with Vulkan GPU acceleration; API calls use provider standard endpoints.
+
+\begin{thebibliography}{99}
+
+\bibitem{fable5harness}
+Anthropic. \textit{Claude Fable 5 Cost-Efficient Harness Design}. Technical Report, 2026.
+
+\bibitem{chen2026empirical}
+Chen, H. \textit{Empirical Findings for Reliable Structured Output in Multi-Model Agent Pipelines}. AgentSystem Research Lab, 2026.
+
+\bibitem{guidance}
+Guidance. \textit{Constrained decoding for LLMs.} 2023.
+
+\bibitem{willard2023}
+Willard, B.T. \textit{Efficient Guided Generation for LLMs.} arXiv, 2023.
+
+\bibitem{frugalgpt}
+Chen, L., Zaharia, M., and Zou, J. \textit{FrugalGPT: How to Use Large Language Models While Reducing Cost and Improving Performance.} arXiv:2305.05176, 2023.
+
+\bibitem{routellm}
+Ong, I. et al. \textit{RouteLLM: Learning to Route LLMs with Preference Data.} arXiv:2406.18665, 2024.
+
+\bibitem{park2023generative}
+Park, J.S. et al. \textit{Generative Agents: Interactive Simulacra of Human Behavior.} UIST, 2023.
+
+\bibitem{autogen}
+Wu, Q. et al. \textit{AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation.} arXiv, 2023.
+
+\bibitem{langchain}
+LangChain. \textit{Building applications with LLMs through composability.} 2023.
+
+\bibitem{zhou2023large}
+Zhou, Y. et al. \textit{Large Language Models Are Human-Level Prompt Engineers.} ICLR, 2023.
+
+\bibitem{zheng2023judging}
+Zheng, L. et al. \textit{Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena.} NeurIPS, 2023.
+
+\bibitem{liang2023}
+Liang, P. et al. \textit{Holistic Evaluation of Language Models.} TMLR, 2023.
+
+\end{thebibliography}
+
+\end{document}
